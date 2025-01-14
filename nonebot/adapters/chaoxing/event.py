@@ -101,6 +101,11 @@ class MessageEvent(Event):
     def message(self) -> Message:
         return self.get_message()
 
+    @property
+    def group_id(self) -> Optional[str]:
+        """ 获取群聊ID """
+        return self.get_group_id()
+
     @override
     def is_tome(self) -> bool:
         return getattr(self, "tome", False)
@@ -121,6 +126,12 @@ class MessageEvent(Event):
     @override
     def get_user_id(self) -> str:
         return str(self.user_id)
+
+    def get_group_id(self) -> Optional[str]:
+        """ 获取群聊ID """
+        if self.message_type == "group":
+            return self.self_id
+        return None
 
     @override
     def get_session_id(self) -> str:

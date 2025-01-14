@@ -211,6 +211,9 @@ class Adapter(BaseAdapter):
         im_username = data.get("im_username")
         im_password = data.get("im_password")
 
+        if not im_username or not im_password:
+            return Response(status_code=400, content="Missing im_username or im_password")
+
         resp = await self.request(
             Request(
                 method="POST",
