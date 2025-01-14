@@ -225,9 +225,17 @@ class Adapter(BaseAdapter):
                 }
             )
         )
-        res = json.loads(resp.content)
-        self.access_token[im_username] = cast(str, res["access_token"])
-        return Response(status_code=200, content=resp.content)
+        res: dict = json.loads(resp.content)
+
+        headers = {
+            "Content-Type": "application/json; charset=utf-8",
+        }
+
+        if access_token := res.get("access_token"):
+            self.access_token[im_username] = cast(str, access_token)
+            return Response(status_code=200, content=resp.content, headers=headers)
+        else:
+            return Response(status_code=400, content=resp.content, headers=headers)
 
     def payload_to_event(self, payload: dict) -> Type[Event]:
         """ 将平台数据转换为 Event 对象 """

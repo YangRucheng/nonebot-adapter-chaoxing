@@ -70,7 +70,7 @@ class MessageEvent(Event):
     """ 消息类型 """
     user_id: str = Field(alias="from")
     """ 发送者ID """
-    self_id: str = Field(alias="to")
+    to_user_id: str = Field(alias="to")
     """ 接收者ID """
     content_type: Literal["text", "image", "voice"] = Field(alias="contentsType")
     """ 消息内容类型 """
@@ -120,7 +120,7 @@ class MessageEvent(Event):
 
     @override
     def get_event_description(self) -> str:
-        keys = ('user_id', 'self_id', 'time', 'message_type', 'message_id', 'message')
+        keys = ('user_id', 'to_user_id', 'time', 'message_type', 'message_id', 'message')
         return str({key: getattr(self, key) for key in keys})
 
     @override
@@ -130,12 +130,12 @@ class MessageEvent(Event):
     def get_group_id(self) -> Optional[str]:
         """ 获取群聊ID """
         if self.message_type == "group":
-            return self.self_id
+            return self.to_user_id
         return None
 
     @override
     def get_session_id(self) -> str:
-        return f"{self.user_id}_{self.self_id}"
+        return f"{self.message_type}_{self.user_id}_{self.to_user_id}"
 
     @override
     def get_event_id(self) -> str:

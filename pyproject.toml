@@ -1,6 +1,6 @@
 [project]
 name = "nonebot-adapter-chaoxing"
-version = "0.0.4"
+version = "0.0.5"
 description = "Nonebot2 Adapter for 超星学习通"
 authors = [{ name = "YangRucheng", email = "admin@yangrucheng.top" }]
 dependencies = ["nonebot2>=2.3.0"]
