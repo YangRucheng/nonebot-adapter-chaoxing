@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>超星学习通 IM</title>
+    <script src="https://im.chaoxing.com/res/plugin/HuanXinIm/sdk/websdk3.1.4.js"></script>
+    <link rel="shortcut icon" href="https://im.chaoxing.com/favicon.ico" type="image/x-icon">
+</head>
+
+<body>
+    <script>
+        class ChaoXingConnect {
+            constructor() {
+                this.conn = new WebIM.connection({
+                    isMultiLoginSessions: true,
+                    https: true,
+                    url: 'https://im-api-vip6-v2.easecdn.com/ws',
+                    apiUrl: 'https://a1-vip6.easecdn.com',
+                    isAutoLogin: true,
+                    heartBeatWait: 4.5 * 1000,
+                    autoReconnectNumMax: 2,
+                    autoReconnectInterval: 2,
+                    appKey: 'cx-dev#cxstudy',
+                    isHttpDNS: false,
+                });
+                this._params = new URLSearchParams(window.location.search);
+            }
+
+            connect = () => {
+                fetch("/chaoxing/login", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        "im_username": this._params.get("username"),
+                        "im_password": this._params.get("password"),
+                    }),
+                })
+                    .then(resp => resp.json())
+                    .then(res => {
+                        this.conn.open({
+                            apiUrl: 'https://a1-vip6.easecdn.com',
+                            appKey: 'cx-dev#cxstudy',
+                            user: res.user.username,
+                            accessToken: res.access_token,
+                        })
+                        ws.self_id = res.user.username;
+
+                        this.conn.listen({
+                            onOpened: () => {
+                                console.info('[CX 连接已打开]');
+                                ws.send({
+                                    "type": "connected",
+                                })
+                            },
+                            onClosed: () => {
+                                console.info('[CX 连接已关闭]');
+                                ws.send({
+                                    "type": "closed",
+                                })
+                            },
+                            onError: event => {
+                                console.error('[CX 连接错误]', event);
+                                ws.send({
+                                    "type": "error",
+                                    "data": event,
+                                })
+                            },
+                            onTextMessage: event => {
+                                console.info('[收到文本消息]', event);
+                                ws.send(event);
+                            },
+                            onEmojiMessage: event => {
+                                console.info('[收到表情消息]', event);
+                                ws.send(event);
+                            },
+                            onPictureMessage: event => {
+                                console.info('[收到图片消息]', event);
+                                ws.send(event);
+                            },
+                            onCmdMessage: event => {
+                                console.info('[收到命令消息]', event);
+                                ws.send(event);
+                            },
+                            onAudioMessage: event => {
+                                console.info('[收到音频消息]', event);
+                                ws.send(event);
+                            },
+                            onLocationMessage: event => {
+                                console.info('[收到位置消息]', event);
+                                ws.send(event);
+                            },
+                            onFileMessage: event => {
+                                console.info('[接收到文件]', event);
+                                ws.send(event);
+                            },
+                            onVideoMessage: event => {
+                                console.info('[收到视频消息]', event);
+                                ws.send(event);
+                            },
+                            onPresence: event => {
+                                console.info('[收到联系人订阅请求、处理群组、聊天室被踢解散等消息]', event);
+                                ws.send(event);
+                            },
+                            onRoster: event => {
+                                console.info('[处理好友申请]', event);
+                                ws.send(event);
+                            },
+                            onInviteMessage: event => {
+                                console.info('[处理群组邀请]', event);
+                                ws.send(event);
+                            },
+                        });
+                    })
+
+
+            };
+
+        }
+
+        class WebsocketConnect {
+            constructor() {
+                const params = new URLSearchParams(window.location.search);
+                this._access_token = params.get("access_token") || "";
+            }
+
+            set self_id(_self_id) {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                this._self_id = _self_id;
+                this._url = `${protocol}//${window.location.host}/chaoxing/ws?self_id=${_self_id}&access_token=${this._access_token}`;
+            }
+
+            connect = () => {
+                this._ws = new WebSocket(this._url);
+                this._ws.onopen = () => {
+                    console.info('[NoneBot 连接已打开]');
+                };
+
+                this._ws.onclose = () => {
+                    setTimeout(this._connect, 1000);
+                };
+
+                this._ws.onerror = error => {
+                    setTimeout(this._connect, 1000);
+                };
+
+                this._ws.onmessage = event => {
+                    const res = JSON.parse(event.data);
+                    console.info('[NoneBot]指令', res);
+                    cx.conn.send(res)
+                };
+            }
+
+            send = async event => {
+                if (this._ws?.readyState != WebSocket.OPEN) {
+                    this.connect();
+                    setTimeout(() => {
+                        this._ws.send(JSON.stringify(event));
+                    }, 1000);
+                } else {
+                    this._ws.send(JSON.stringify(event));
+                }
+            }
+        }
+
+    </script>
+    <script>
+        const ws = new WebsocketConnect();
+        const cx = new ChaoXingConnect();
+
+        window.onload = () => {
+            cx.connect();
+        }
+    </script>
+</body>
+
+</html>

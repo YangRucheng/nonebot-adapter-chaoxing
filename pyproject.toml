@@ -1,0 +1,13 @@
+[project]
+name = "nonebot-adapter-chaoxing"
+version = "0.0.1"
+description = "Nonebot2 Adapter for 超星学习通"
+authors = [{ name = "YangRucheng", email = "admin@yangrucheng.top" }]
+dependencies = ["nonebot2>=2.3.0"]
+requires-python = ">=3.10"
+readme = "README.md"
+license = { text = "MIT" }
+
+[project.urls]
+homepage = "https://github.com/YangRucheng/nonebot-adapter-chaoxing"
+repository = "https://github.com/YangRucheng/nonebot-adapter-chaoxing"
