@@ -139,11 +139,11 @@ class CommandEvent(Event):
     """ 发送者ID """
     self_id: str = Field(alias="to")
     """ 接收者ID """
-    content_type: Literal["request"] = Field(alias="contentsType")
+    content_type: Literal["command"] = Field(alias="contentsType")
     """ 消息内容类型 """
     timestamp: int = Field(alias="time")
     """ 时间戳 """
-    action: Literal["rtcCall", "CMD_CALL_END_DISCONNECT", "REVOKE_FLAG"] = Field()
+    action: str = Field()
     """ 指令动作 """
     ext: dict = Field(default_factory=dict)
     """ 额外信息 """
@@ -164,7 +164,7 @@ class CommandEvent(Event):
 
     @override
     def get_type(self) -> Literal["message"]:
-        return "message"
+        return "request"
 
 
 class ConnectedEvent(MetaEvent):
