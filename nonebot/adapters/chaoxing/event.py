@@ -35,8 +35,8 @@ class Event(BaseEvent):
         return str(model_dump(self))
 
     @override
-    def get_user_id(self) -> str:
-        raise NotImplementedError
+    def get_user_id(self) -> Optional[str]:
+        return None
 
     @override
     def get_session_id(self) -> str:
@@ -108,7 +108,10 @@ class MessageEvent(Event):
 
     @override
     def is_tome(self) -> bool:
-        return getattr(self, "tome", False)
+        if self.message_type == "private":
+            return True
+        else:
+            return getattr(self, "tome", False)
 
     @override
     def get_type(self) -> Literal["message"]:
@@ -176,6 +179,10 @@ class CommandEvent(Event):
     @override
     def get_type(self) -> Literal["message"]:
         return "request"
+
+    @override
+    def get_event_name(self) -> str:
+        return f"{self.__class__.__name__}.{self.action}"
 
 
 class ConnectedEvent(MetaEvent):
