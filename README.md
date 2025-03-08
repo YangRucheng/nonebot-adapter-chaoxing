@@ -1,6 +1,6 @@
 <div align="center">
 
-# NoneBot-Adapter-WXMP
+# NoneBot-Adapter-ChaoXing
 
 _✨ 超星学习通（环信3.0） 协议适配 ✨_
 
@@ -16,17 +16,18 @@ _✨ 超星学习通（环信3.0） 协议适配 ✨_
   <img src="https://img.shields.io/badge/python-3.10+-blue" alt="python">
 </p>
 
-### 安装
+## 安装
 
+从 PyPI 安装
 ```bash
 pip install nonebot-adapter-chaoxing
 ```
-或
+或从 GitHub 仓库安装
 ```bash
 pip install git+https://github.com/YangRucheng/nonebot-adapter-chaoxing.git#egg=nonebot-adapter-chaoxing
 ```
 
-### 加载适配器
+## 加载适配器
 
 ```python
 import nonebot
@@ -38,21 +39,27 @@ driver = nonebot.get_driver()
 driver.register_adapter(CxAdapter)
 ```
 
-### 配置 .env 文件
+## 配置 .env 文件
 
-#### 配置 Driver
+### 配置 Driver
 
 ```dotenv
 DRIVER=~fastapi+~httpx
 ```
 
-#### 配置 Bot
+### 配置 Bot
+
+通过 [获取用户信息 API](https://sso.chaoxing.com/apis/login/userLogin4Uname.do) 获取
 
 ```dotenv
-CX_TOKEN="" # 类似于 OneBot 的 access_token
+CX_BOTS='[{
+    'im_token': '',
+    'im_user': '',
+    'im_passwd': ''
+}]'
 ```
 
-### 适配情况
+## 适配情况
 
 <div align="center">
 
@@ -64,6 +71,6 @@ CX_TOKEN="" # 类似于 OneBot 的 access_token
 
 </div>
 
-### 开源协议
+## 开源协议
 
 [MIT LICENSE](https://github.com/YangRucheng/nonebot-adapter-chaoxing/blob/main/LICENSE)

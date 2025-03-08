@@ -12,7 +12,7 @@ from .utils import escape
 
 
 class Event(BaseEvent):
-    model_config = ConfigDict(extra='allow')
+    model_config = ConfigDict(extra="allow")  # noqa: W291
 
     @override
     def is_tome(self) -> bool:
@@ -47,7 +47,7 @@ class Event(BaseEvent):
 
 
 class MetaEvent(Event):
-    """ 元事件 """
+    """元事件"""
 
     @override
     def get_type(self) -> Literal["meta_event"]:
@@ -55,7 +55,7 @@ class MetaEvent(Event):
 
 
 class NoticeEvent(Event):
-    """ 通知事件 """
+    """通知事件"""
 
     @override
     def get_type(self) -> Literal["notice"]:
@@ -63,7 +63,8 @@ class NoticeEvent(Event):
 
 
 class MessageEvent(Event):
-    """ 消息事件 """
+    """消息事件"""
+
     message_id: str = Field(alias="id")
     """ 消息ID """
     message_type: Literal["private", "group"] = Field(alias="type")
@@ -79,11 +80,11 @@ class MessageEvent(Event):
     ext: dict = Field(default_factory=dict)
     """ 额外信息 """
 
-    model_config = ConfigDict(extra='ignore')
+    model_config = ConfigDict(extra="ignore")
 
-    @model_validator(mode='before')
+    @model_validator(mode="before")
     def _(cls, values: dict[str, Any]) -> dict[str, Any]:
-        """ 数据预处理 """
+        """数据预处理"""
         if _type := values.get("type"):
             values["type"] = {
                 "chat": "private",
@@ -103,7 +104,7 @@ class MessageEvent(Event):
 
     @property
     def group_id(self) -> Optional[str]:
-        """ 获取群聊ID """
+        """获取群聊ID"""
         return self.get_group_id()
 
     @override
@@ -123,7 +124,7 @@ class MessageEvent(Event):
 
     @override
     def get_event_description(self) -> str:
-        keys = ('user_id', 'to_user_id', 'time', 'message_type', 'message_id', 'message')
+        keys = ("user_id", "to_user_id", "time", "message_type", "message_id", "message")
         return str({key: getattr(self, key) for key in keys})
 
     @override
@@ -131,7 +132,7 @@ class MessageEvent(Event):
         return str(self.user_id)
 
     def get_group_id(self) -> Optional[str]:
-        """ 获取群聊ID """
+        """获取群聊ID"""
         if self.message_type == "group":
             return self.to_user_id
         return None
@@ -146,7 +147,8 @@ class MessageEvent(Event):
 
 
 class CommandEvent(Event):
-    """ 指令事件 """
+    """指令事件"""
+
     message_id: str = Field(alias="id")
     """ 消息ID """
     user_id: str = Field(alias="from")
@@ -162,11 +164,11 @@ class CommandEvent(Event):
     ext: dict = Field(default_factory=dict)
     """ 额外信息 """
 
-    model_config = ConfigDict(extra='ignore')
+    model_config = ConfigDict(extra="ignore")
 
-    @model_validator(mode='before')
+    @model_validator(mode="before")
     def _(cls, values: dict[str, Any]) -> dict[str, Any]:
-        """ 数据预处理 """
+        """数据预处理"""
         if _type := values.get("type"):
             values["type"] = {
                 "chat": "private",
@@ -186,23 +188,27 @@ class CommandEvent(Event):
 
 
 class ConnectedEvent(MetaEvent):
-    """ 连接事件 """
+    """连接事件"""
+
     type: Literal["connected"] = Field()
 
 
 class ClosedEvent(MetaEvent):
-    """ 关闭事件 """
+    """关闭事件"""
+
     type: Literal["closed"] = Field()
 
 
 class ErrorEvent(MetaEvent):
-    """ 错误事件 """
+    """错误事件"""
+
     type: Literal["error"] = Field()
     data: dict = Field()
 
 
 class TextMessageEvent(MessageEvent):
-    """ 文本消息事件 """
+    """文本消息事件"""
+
     content_type: Literal["text"] = Field(alias="contentsType")
     """ 消息内容类型 """
     content: str = Field(alias="data")
@@ -225,7 +231,7 @@ class ImageMessageEvent(MessageEvent):
 
     @model_validator(mode="before")
     def _(cls, values: dict[str, Any]) -> dict[str, Any]:
-        """ 数据预处理 """
+        """数据预处理"""
         values["file_length"] = int(values.get("file_length", 0) or 0)
         return values
 
@@ -245,10 +251,8 @@ EVENT_CLASSES: list[type[Event]] = [
     ConnectedEvent,
     ClosedEvent,
     ErrorEvent,
-
     TextMessageEvent,
     ImageMessageEvent,
     VoiceMessageEvent,
-
     CommandEvent,
 ]

@@ -17,6 +17,7 @@ from nonebot.drivers import (
 from .event import *
 from .utils import log, escape
 from .exception import ActionFailed
+from .config import BotInfo
 from .message import (
     Text,
     Image,
@@ -33,8 +34,10 @@ class Bot(BaseBot):
     adapter: "Adapter"
 
     @override
-    def __init__(self, adapter: "Adapter", self_id: str):
+    def __init__(self, adapter: "Adapter", self_id: str, bot_info: BotInfo):
         super().__init__(adapter, self_id)
+
+        self.bot_info = bot_info
 
         # Bot 鉴权信息
         self._access_token: Optional[str] = None
@@ -47,70 +50,49 @@ class Bot(BaseBot):
         message: Union[str, Message, MessageSegment],
         **kwargs,
     ) -> Any:
-        """ 发送消息 """
-        if isinstance(message, str):
-            message = Message(MessageSegment.text(message))
-        elif isinstance(message, MessageSegment):
-            message = Message(message)
-        elif not isinstance(message, Message):
-            raise ValueError("message type error")
-
-        msg = message.extract_plain_text()
-
-        if not msg:
-            raise ValueError("Empty message")
-
-        if group_id := getattr(event, "group_id", None):
-            await self.send_group_msg(group_id, msg)
-        elif user_id := getattr(event, "user_id", None):
-            await self.send_private_msg(user_id, msg)
-        else:
-            raise ValueError("Unknown recipient: neither group_id nor user_id found in event")
+        """发送消息"""
 
     async def handle_event(self, event: Type[Event]):
-        """ 处理事件 """
+        """处理事件"""
         if event.get_user_id() != self.self_id:
             await handle_event(self, event)
 
     async def send_private_msg(self, user_id: str, msg: str) -> None:
-        """ 发送消息 """
-        ws = self.adapter.connections[self.self_id]
-        await ws.send_text(json.dumps({
-            "chatType": "singleChat",
-            "ext": {},
-            "from": self.self_id,
-            "id": random.randint(int(10e12), int(10e15)),
-            "msg": msg,
-            "to": user_id,
-            "type": "txt",
-        }))
+        """发送消息"""
 
     async def send_group_msg(self, group_id: str, msg: str) -> None:
-        """ 发送消息 """
-        ws = self.adapter.connections[self.self_id]
-        await ws.send_text(json.dumps({
-            "group": "groupchat",
-            "ext": {},
-            "from": self.self_id,
-            "id": random.randint(int(10e12), int(10e15)),
-            "msg": msg,
-            "to": group_id,
-            "type": "txt",
-        }))
+        """发送消息"""
 
     @overload
-    async def send_msg(self, user_id: str, msg: str) -> None:
-        ...
+    async def send_msg(self, user_id: str, msg: str) -> None: ...
 
     @overload
-    async def send_msg(self, group_id: str, msg: str) -> None:
-        ...
+    async def send_msg(self, group_id: str, msg: str) -> None: ...
 
     async def send_msg(self, **kwargs) -> None:
-        """ 发送消息 """
-        if "user_id" in kwargs:
-            await self.send_private_msg(kwargs["user_id"], kwargs["msg"])
-        elif "group_id" in kwargs:
-            await self.send_group_msg(kwargs["group_id"], kwargs["msg"])
-        else:
-            raise ValueError("Unknown message type")
+        """发送消息"""
+
+    async def get_token(self) -> str:
+        """获取 Token"""
+        if not self.bot_info.im_user or not self.bot_info.im_passwd:
+            raise ValueError("im_user or im_passwd is empty")
+
+        resp = await self.adapter.request(
+            Request(
+                method="POST",
+                url="https://a1-vip6.easemob.com/cx-dev/cxstudy/token",
+                json={
+                    "grant_type": "password",
+                    "password": self.bot_info.im_passwd,
+                    "username": self.bot_info.im_user,
+                },
+            )
+        )
+        if resp.status_code != 200 or not resp.content:
+            raise ValueError("Failed to get token")
+
+        res: dict = json.loads(resp.content)
+        if "access_token" not in res:
+            raise ValueError("Failed to get token")
+
+        return res["access_token"]

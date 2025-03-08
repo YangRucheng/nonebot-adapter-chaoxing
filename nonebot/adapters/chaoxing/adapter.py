@@ -5,10 +5,13 @@ from pathlib import Path
 from yarl import URL
 import contextlib
 import asyncio
+import random
 import hashlib
+import time
 import secrets
 import json
 import sys
+import base64
 import re
 
 from nonebot import get_plugin_config
@@ -22,6 +25,7 @@ from nonebot.drivers import (
     Response,
     ASGIMixin,
     WebSocket,
+    WebSocketClientMixin,
     ForwardDriver,
     ReverseDriver,
     HTTPClientMixin,
@@ -32,8 +36,8 @@ from nonebot.adapters import Adapter as BaseAdapter
 
 from .bot import Bot
 from .event import *
-from .utils import *
-from .config import Config
+from .utils import log, escape, unescape
+from .config import Config, BotInfo
 from .exception import (
     ActionFailed,
     NetworkError,
@@ -43,27 +47,28 @@ from .exception import (
 
 
 class Adapter(BaseAdapter):
-
     @override
     def __init__(self, driver: Driver, **kwargs: Any):
         super().__init__(driver, **kwargs)
-        self.connections: dict[str, WebSocket] = {}
-        self.access_token: dict[str, str] = {}
-        self.tasks: set["asyncio.Task"] = set()
         self.cx_config: Config = get_plugin_config(Config)
-        self._setup()
+
+        self.connections: dict[str, WebSocket] = {}
+        self.tasks: set[asyncio.Task] = set()
+
+        self.setup()
 
     @classmethod
     @override
     def get_name(cls) -> str:
-        """ 适配器名称: `ChaoXing` """
+        """适配器名称: `ChaoXing`"""
         return "ChaoXing"
 
-    def _setup(self) -> None:
-        if not isinstance(self.driver, ASGIMixin):
+    def setup(self) -> None:
+        if not isinstance(self.driver, WebSocketClientMixin):
             raise RuntimeError(
-                f"Current driver {self.config.driver} doesn't support asgi server!"
-                f"{self.get_name()} Adapter need a asgi server driver to work."
+                f"Current driver {self.config.driver} "
+                "doesn't support websocket client connections!"
+                f"{self.get_name()} Adapter needs a WebSocketClient Driver to work."
             )
 
         if not isinstance(self.driver, HTTPClientMixin):
@@ -73,44 +78,11 @@ class Adapter(BaseAdapter):
                 f"{self.get_name()} Adapter needs a HTTPClient Driver to work."
             )
 
-        self.setup_http_server(
-            HTTPServerSetup(
-                path=URL("/chaoxing"),
-                method="GET",
-                name=f"{self.get_name()} Root GET",
-                handle_func=self._handle_get,
-            )
-        )
-        self.setup_http_server(
-            HTTPServerSetup(
-                path=URL("/chaoxing/"),
-                method="GET",
-                name=f"{self.get_name()} Root GET",
-                handle_func=self._handle_get,
-            )
-        )
+        self.on_ready(self.startup)
+        self.driver.on_shutdown(self.shutdown)
 
-        self.setup_http_server(
-            HTTPServerSetup(
-                path=URL("/chaoxing/login"),
-                method="POST",
-                name=f"{self.get_name()} Root GET",
-                handle_func=self._handle_login,
-            )
-        )
-
-        self.setup_websocket_server(
-            WebSocketServerSetup(
-                path=URL("/chaoxing/ws"),
-                name=f"{self.get_name()} Root WS",
-                handle_func=self._handle_ws,
-            )
-        )
-
-        self.driver.on_shutdown(self._shutdown)
-
-    async def _shutdown(self) -> None:
-        """ 关闭 Adapter """
+    async def shutdown(self) -> None:
+        """关闭 Adapter"""
         for task in self.tasks:
             if not task.done():
                 task.cancel()
@@ -121,128 +93,305 @@ class Adapter(BaseAdapter):
         )
         self.tasks.clear()
 
+    async def startup(self) -> None:
+        """启动 Adapter"""
+        for bot_info in self.cx_config.cx_bots:
+            task = asyncio.create_task(self.run_bot_websocket(bot_info))
+            task.add_done_callback(self.tasks.discard)
+            self.tasks.add(task)
+
+    async def run_bot_websocket(self, bot_info: BotInfo) -> None:
+        """连接 Bot"""
+        bot = Bot(self, bot_info.im_user, bot_info)
+
+        while True:
+            try:
+                async with self.websocket(
+                    Request(
+                        method="GET",
+                        url="wss://im-api-vip6-v2.easemob.com/ws/{str1}/{str2}/websocket".format(
+                            str1=int(random.random() * 1000),
+                            str2="".join(random.choices("abcdefghijklmnopqrstuvwxyz012345", k=8)),
+                        ),
+                        timeout=None,
+                    )
+                ) as ws:
+                    try:
+                        await self._loop(bot, ws)
+                    except WebSocketClosed as e:
+                        log(
+                            "ERROR",
+                            "<r><bg #f8bbd0>WebSocket Closed</bg #f8bbd0></r>",
+                            e,
+                        )
+                    except Exception as e:
+                        log(
+                            "ERROR",
+                            (
+                                "<r><bg #f8bbd0>"
+                                "Error while process data from websocket "
+                                "Trying to reconnect..."
+                                "</bg #f8bbd0></r>"
+                            ),
+                            e,
+                        )
+                    finally:
+                        if bot.self_id in self.bots:
+                            self.bot_disconnect(bot)
+
+            except Exception as e:
+                log(
+                    "ERROR",
+                    ("<r><bg #f8bbd0>Error while setup websocketTrying to reconnect...</bg #f8bbd0></r>"),
+                    e,
+                )
+
+            await asyncio.sleep(2)
+
     async def _call_api(self, bot: Bot, api: str, **data: Any) -> Response:
-        """ 调用平台 API """
-        body: Any | None = data.get("json", data.get("data", data.get("body", None)))
-
-        request = Request(
-            method=data.get("method", "POST"),
-            url=f"https://api.weixin.qq.com/cgi-bin{api}",
-            params=data.get("params", {}),
-            headers={
-                "Authorization": f"Bearer {self.access_token[bot.self_id]}",
-            } | data.get("headers", {}),
-            content=json.dumps(body, ensure_ascii=False).encode("utf-8") if body else None,
-            files=data.get("files", None),
-        )
-        resp = await self.request(request)
-
-        if resp.status_code != 200 or not resp.content:
-            raise ActionFailed(resp)
-
-        return resp
-
-    async def _handle_ws(self, ws: WebSocket) -> None:
-        """ 处理 WebSocket 连接 """
-        self_id = ws.request.url.query.get("self_id")
-        access_token = ws.request.url.query.get("access_token")
-
-        if not self_id:
-            log("WARNING", "Missing Self-ID")
-            await ws.close(1008, "Missing Self-ID")
-            return
-        elif self_id in self.bots:
-            log("WARNING", f"There's already a bot {self_id}, ignored")
-            await ws.close(1008, "Duplicate Self-ID")
-            return
-
-        if self.cx_config.cx_token and access_token != self.cx_config.cx_token:
-            log("WARNING", "Invalid access token")
-            await ws.close(1008, "Invalid access token")
-            return
-
-        await ws.accept()
-        bot = Bot(self, self_id)
-        self.bot_connect(bot)
-        self.connections[self_id] = ws
-
-        log("INFO", f"<y>Bot {escape_tag(self_id)}</y> connected")
-
-        try:
-            while True:
-                data = await ws.receive()
-                payload: dict = json.loads(data)
-
-                if event := self.payload_to_event(payload):
-                    task = asyncio.create_task(bot.handle_event(event))
-                    task.add_done_callback(self.tasks.discard)
-                    self.tasks.add(task)
-        except WebSocketClosed:
-            log("WARNING", f"WebSocket for Bot {escape_tag(self_id)} closed by peer")
-        except Exception as e:
-            log(
-                "ERROR",
-                "<r><bg #f8bbd0>Error while process data from websocket "
-                f"for bot {escape_tag(self_id)}.</bg #f8bbd0></r>",
-                e,
-            )
-        finally:
-            with contextlib.suppress(Exception):
-                await ws.close()
-            self.connections.pop(self_id, None)
-            self.bot_disconnect(bot)
-
-    async def _handle_get(self, request: Request) -> Response:
-        """ 处理 HTTP GET 请求 """
-        headers = {
-            "Content-Type": "text/html; charset=utf-8",
-        }
-        if html := getattr(self, "_html", None):
-            return Response(status_code=200, content=html, headers=headers)
-        else:
-            with open(Path(__file__).parent / "res" / "index.html", "r") as f:
-                self._html = f.read()
-            return Response(status_code=200, content=self._html, headers=headers)
-
-    async def _handle_login(self, request: Request) -> Response:
-        """ 处理登录请求 """
-        data: dict = json.loads(request.content)
-
-        im_username = data.get("im_username")
-        im_password = data.get("im_password")
-
-        if not im_username or not im_password:
-            return Response(status_code=400, content="Missing im_username or im_password")
-
-        resp = await self.request(
-            Request(
-                method="POST",
-                url=URL("https://a1-vip6.easemob.com/cx-dev/cxstudy/token"),
-                json={
-                    "grant_type": "password",
-                    "password": im_password,
-                    "username": im_username,
-                }
-            )
-        )
-        res: dict = json.loads(resp.content)
-
-        headers = {
-            "Content-Type": "application/json; charset=utf-8",
-        }
-
-        if access_token := res.get("access_token"):
-            self.access_token[im_username] = cast(str, access_token)
-            return Response(status_code=200, content=resp.content, headers=headers)
-        else:
-            return Response(status_code=400, content=resp.content, headers=headers)
+        """调用平台 API"""
 
     def payload_to_event(self, payload: dict) -> Type[Event]:
-        """ 将平台数据转换为 Event 对象 """
-        for cls in EVENT_CLASSES:
-            try:
-                event = cls.model_validate(payload)
-                return event
-            except ValidationError as e:
-                pass
-        raise UnkonwnEventError(payload)
+        """将平台数据转换为 Event 对象"""
+
+    async def _loop(self, bot: Bot, ws: WebSocket) -> None:
+        """接收并处理 WebSocket 事件"""
+
+        def _get_bytes_last_index(content: bytes, value: bytearray, start: int = 0, end: int = 0):
+            length = len(value)
+            len_bytes = len(content)
+            if length == 0 or len_bytes == 0:
+                return -1
+            last = value[-1]
+            for i in range(len_bytes - 1 if end == 0 else end - 1, start - 1, -1):
+                if content[i] != last:
+                    continue
+                is_return = True
+                for j in range(length - 2, -1, -1):
+                    if content[i - length + j + 1] == value[j]:
+                        continue
+                    is_return = False
+                    break
+                if is_return:
+                    return i - length + 1
+            return -1
+
+        def _get_bytes_index(content: bytes, value: bytearray, start=0, end=0):
+            length = len(value)
+            len_bytes = len(content)
+            if length == 0 or len_bytes == 0:
+                return -1
+            first = value[0]
+            for i in range(start, len_bytes if end == 0 else end):
+                if content[i] != first:
+                    continue
+                is_return = True
+                for j in range(1, length):
+                    if content[i + j] == value[j]:
+                        continue
+                    is_return = False
+                    break
+                if is_return:
+                    return i
+            return -1
+
+        def _get_chat_id(content: bytes):
+            BYTES_ARRAY = bytearray(
+                [
+                    0x1A,
+                    0x16,
+                    0x63,
+                    0x6F,
+                    0x6E,
+                    0x66,
+                    0x65,
+                    0x72,
+                    0x65,
+                    0x6E,
+                    0x63,
+                    0x65,
+                    0x2E,
+                    0x65,
+                    0x61,
+                    0x73,
+                    0x65,
+                    0x6D,
+                    0x6F,
+                    0x62,
+                    0x2E,
+                    0x63,
+                    0x6F,
+                    0x6D,
+                ]
+            )
+
+            index = _get_bytes_last_index(
+                content,
+                BYTES_ARRAY,
+            )
+            if index == -1:
+                return None
+            i = content[:index].rfind(bytes([0x12]))
+            if i == -1:
+                return None
+            length = content[i + 1]
+            return content[i + 2 : index].decode("utf-8") if i + 2 + length == index else None
+
+        def _get_attachment(content: bytes, start, end):
+            BYTES_ATTACHMENT = bytearray(
+                [0x0A, 0x61, 0x74, 0x74, 0x61, 0x63, 0x68, 0x6D, 0x65, 0x6E, 0x74, 0x10, 0x08, 0x32]
+            )
+            start = _get_bytes_index(content, BYTES_ATTACHMENT, start, end)
+            if start == -1:
+                return None
+            start += len(BYTES_ATTACHMENT)
+            length = content[start] + (content[start + 1] - 1) * 0x80
+            start += 2
+            s = start
+            start += length
+            e = start
+            j = json.loads(content[s:e].decode("utf-8"))
+            return None if start > end else j
+
+        while True:
+            data: str = await ws.receive()
+
+            # 需要登录
+            if data == "o":
+                im_token = await bot.get_token()
+                im_user = bot.bot_info.im_user
+                timestamp = str(int(time.time() * 1000))
+                temp = base64.b64encode(
+                    b"\x08\x00\x12"
+                    + chr(52 + len(im_user)).encode()
+                    + b"\x0a\x0e"
+                    + b"cx-dev#cxstudy"
+                    + b"\x12"
+                    + chr(len(im_user)).encode()
+                    + im_user.encode()
+                    + b"\x1a\x0b"
+                    + b"easemob.com"
+                    + b"\x22\x13"
+                    + ("webim_" + timestamp).encode()
+                    + b"\x1a\x85\x01"
+                    + b"$t$"
+                    + im_token.encode()
+                    + b"\x40\x03\x4a\xc0\x01\x08\x10\x12\x05\x33\x2e\x30\x2e\x30\x28\x00\x30\x00\x4a\x0d"
+                    + timestamp.encode()
+                    + b"\x62\x05\x77\x65\x62\x69\x6d\x6a\x13\x77\x65\x62\x69\x6d\x5f"
+                    + timestamp.encode()
+                    + b"\x72\x85\x01\x24\x74\x24"
+                    + im_token.encode()
+                    + b"\x50\x00\x58\x00"
+                )
+                await ws.send(json.dumps([temp.decode()]))
+
+            # 消息
+            elif data[0] == "a":
+                content = base64.b64decode(json.loads(data[1:])[0])
+
+                if len(content) < 5:
+                    return
+
+                # 有新消息，调用根据环信消息ID获取消息详情函数获取消息详情
+                if content[:5] == b"\x08\x00\x40\x02\x4a":
+                    if _get_chat_id(content) is None:
+                        return
+                    msg = content.decode("utf-8")
+                    temp = ""
+                    for i in range(len(msg)):
+                        if i == 3:
+                            temp += b"\x00".decode()
+                        elif i == 6:
+                            temp += b"\x1a".decode()
+                        else:
+                            temp += msg[i]
+                    mess2 = temp + bytearray([0x58, 0x00]).decode()
+                    temp = base64.b64encode(mess2.encode())
+                    await ws.send(json.dumps([temp.decode()]))
+
+                # 首次与环信IM连接，获取未读消息
+                elif content[:5] == b"\x08\x00\x40\x01\x4a":
+                    if _get_chat_id(content) is None:
+                        return
+                    chatid_list: list[bytes] = re.findall(
+                        b"\\x12-\\n\\)\\x12\\x0f(\\d+)\\x1a\\x16conference.easemob.com\\x10",
+                        content,
+                    )
+                    for chatid in chatid_list:
+                        temp = base64.b64encode(
+                            b"\x08\x00@\x00J+\x1a)\x12\x0f" + chatid + b"\x1a\x16conference.easemob.comX\x00"
+                        )
+                        await ws.send(json.dumps([temp.decode()]))
+
+                # 登录成功消息
+                elif content[:5] == b"\x08\x00@\x03J":
+                    await ws.send(json.dumps(["CABAAVgA"]))
+
+                # 获取到消息详情，执行查找并提取签到消息函数
+                else:
+                    chatid = _get_chat_id(content)
+                    if chatid is None:
+                        return
+
+                    sessonend = 11
+                    while True:
+                        index = sessonend
+                        if chr(content[index]) != b"\x22".decode():
+                            index += 1
+                            break
+                        else:
+                            index += 1
+                        sessonend = content[index] + (content[index + 1] - 1) * 0x80 + index + 2
+                        index += 2
+                        if sessonend < 0 or chr(content[index]).encode() != b"\x08":
+                            index += 1
+                            break
+                        else:
+                            index += 1
+
+                        BYTES_END = bytearray(
+                            [
+                                0x1A,
+                                0x16,
+                                0x63,
+                                0x6F,
+                                0x6E,
+                                0x66,
+                                0x65,
+                                0x72,
+                                0x65,
+                                0x6E,
+                                0x63,
+                                0x65,
+                                0x2E,
+                                0x65,
+                                0x61,
+                                0x73,
+                                0x65,
+                                0x6D,
+                                0x6F,
+                                0x62,
+                                0x2E,
+                                0x63,
+                                0x6F,
+                                0x6D,
+                            ]
+                        )
+
+                        temp = base64.b64encode(
+                            bytearray([0x08, 0x00, 0x40, 0x00, 0x4A])
+                            + chr(len(chatid) + 38).encode()
+                            + b"\x10"
+                            + content[index : index + 9]
+                            + bytearray([0x1A, 0x29, 0x12])
+                            + chr(len(chatid)).encode()
+                            + chatid.encode("utf-8")
+                            + BYTES_END
+                            + bytearray([0x58, 0x00])
+                        )
+                        await ws.send(json.dumps([temp.decode()]))
+                        index += 10
+                        att = _get_attachment(content, index, sessonend)
+                        if att is not None:
+                            ...
