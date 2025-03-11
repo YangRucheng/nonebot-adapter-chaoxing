@@ -1,0 +1,6 @@
+include nonebot/**
+include nonebot/adapters/chaoxing/res/*.html
+
+exclude test/*
+exclude client/*
+exclude example/*
