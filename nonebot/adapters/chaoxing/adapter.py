@@ -190,26 +190,33 @@ class Adapter(BaseAdapter):
                 },
             )
             res: dict = resp.json()
-            if not res.get("status"):
+            if not res.get("status", False):
                 return Response(
                     status_code=401,
-                    content="Invalid username or password",
+                    content=resp.text,
+                    headers={"Content-Type": "application/json"},
                 )
 
             resp = await client.get(
                 url="https://sso.chaoxing.com/apis/login/userLogin4Uname.do",
             )
             res: dict = resp.json()
-            if res.get("result") != 0:
+            if not res.get("result", False):
                 return Response(
                     status_code=401,
-                    content="can't get im account",
+                    content=resp.text,
+                    headers={"Content-Type": "application/json"},
                 )
-            else:
-                return Response(
-                    status_code=200,
-                    content=json.dumps(res["msg"]["accountInfo"]["imAccount"]),
-                )
+
+            return Response(
+                status_code=200,
+                content=json.dumps(
+                    res["msg"]["accountInfo"]["imAccount"],
+                    ensure_ascii=False,
+                    indent=4,
+                ),
+                headers={"Content-Type": "application/json"},
+            )
 
     def payload_to_event(self, payload: dict) -> Type[Event]:
         """将平台数据转换为 Event 对象"""

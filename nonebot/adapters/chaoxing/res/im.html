@@ -42,83 +42,84 @@
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        "im_username": this._params.get("username"),
-                        "im_password": this._params.get("password"),
+                        "username": this._params.get("username"),
+                        "password": this._params.get("password"),
                     }),
                 })
                     .then(resp => resp.json())
                     .then(res => {
+                        console.info('[登录成功]', res);
                         this.conn.open({
                             apiUrl: 'https://a1-vip6.easecdn.com',
                             appKey: 'cx-dev#cxstudy',
-                            user: res.user.username,
-                            accessToken: res.access_token,
+                            user: res.username,
+                            pwd: res.password,
                         })
-                        ws.self_id = res.user.username;
+                        nb.self_id = res.username;
 
                         this.conn.listen({
                             onOpened: () => {
                                 console.info('[CX 连接已打开]');
-                                ws.send({
+                                nb.send({
                                     "type": "connected",
                                 })
                             },
                             onClosed: () => {
                                 console.info('[CX 连接已关闭]');
-                                ws.send({
+                                nb.send({
                                     "type": "closed",
                                 })
                             },
                             onError: event => {
                                 console.error('[CX 连接错误]', event);
-                                ws.send({
+                                nb.send({
                                     "type": "error",
                                     "data": event,
                                 })
                             },
                             onTextMessage: event => {
                                 console.info('[收到文本消息]', event);
-                                ws.send(event);
+                                nb.send(event);
                             },
                             onEmojiMessage: event => {
                                 console.info('[收到表情消息]', event);
-                                ws.send(event);
+                                nb.send(event);
                             },
                             onPictureMessage: event => {
                                 console.info('[收到图片消息]', event);
-                                ws.send(event);
+                                nb.send(event);
                             },
                             onCmdMessage: event => {
                                 console.info('[收到命令消息]', event);
-                                ws.send(event);
+                                nb.send(event);
                             },
                             onAudioMessage: event => {
                                 console.info('[收到音频消息]', event);
-                                ws.send(event);
+                                nb.send(event);
                             },
                             onLocationMessage: event => {
                                 console.info('[收到位置消息]', event);
-                                ws.send(event);
+                                nb.send(event);
                             },
                             onFileMessage: event => {
                                 console.info('[接收到文件]', event);
-                                ws.send(event);
+                                nb.send(event);
                             },
                             onVideoMessage: event => {
                                 console.info('[收到视频消息]', event);
-                                ws.send(event);
+                                nb.send(event);
                             },
                             onPresence: event => {
                                 console.info('[收到联系人订阅请求、处理群组、聊天室被踢解散等消息]', event);
-                                ws.send(event);
+                                nb.send(event);
                             },
                             onRoster: event => {
                                 console.info('[处理好友申请]', event);
-                                ws.send(event);
+                                nb.send(event);
                             },
                             onInviteMessage: event => {
                                 console.info('[处理群组邀请]', event);
-                                ws.send(event);
+                                nb.send(event);
                             },
                         });
                     })
@@ -162,7 +163,7 @@
             }
 
             send = async event => {
-                if (this._ws?.readyState != WebSocket.OPEN) {
+                if (this._ws?.readyState != WebSocket.OPEN || this._ws.readyState != WebSocket.CONNECTING) {
                     this.connect();
                     setTimeout(() => {
                         this._ws.send(JSON.stringify(event));

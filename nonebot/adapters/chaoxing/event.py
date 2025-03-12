@@ -15,11 +15,15 @@ from .message import Message
 
 
 class Event(BaseEvent):
+    ext: dict = Field(default_factory=dict)
+    """ 额外信息 """
+    to_me: bool = Field(default=False)
+    """ 是否为有关消息 """
     model_config = ConfigDict(extra="allow")
 
     @override
     def is_tome(self) -> bool:
-        return False
+        return self.to_me
 
     @override
     def get_type(self) -> Literal["message", "notice", "request", "meta_event"]:
@@ -171,8 +175,6 @@ class CommandEvent(Event):
     """ 时间戳 """
     action: str = Field()
     """ 指令动作 """
-    ext: dict = Field(default_factory=dict)
-    """ 额外信息 """
 
     model_config = ConfigDict(extra="ignore")
 

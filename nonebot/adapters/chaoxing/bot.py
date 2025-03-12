@@ -58,8 +58,14 @@ class Bot(BaseBot):
 
     async def handle_event(self, event: Type[Event]):
         """处理事件"""
-        if event.get_user_id() != self.self_id:
-            await handle_event(self, event)
+        if event.get_user_id() == self.self_id:
+            return
+
+        atToInfo: list[dict] = event.ext.get("atToInfo", [])
+        if any(item.get("uid", "") == self.self_id for item in atToInfo):
+            event.to_me = True
+
+        await handle_event(self, event)
 
     async def send_private_msg(self, user_id: str, msg: str) -> None:
         """发送消息"""
