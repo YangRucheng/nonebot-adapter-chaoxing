@@ -63,7 +63,7 @@ class Bot(BaseBot):
 
         atToInfo: list[dict] = event.ext.get("atToInfo", [])
         if any(item.get("uid", "") == self.self_id for item in atToInfo):
-            event.to_me = True
+            event.tome = True
 
         await handle_event(self, event)
 

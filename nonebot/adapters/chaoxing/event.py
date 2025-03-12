@@ -17,8 +17,9 @@ from .message import Message
 class Event(BaseEvent):
     ext: dict = Field(default_factory=dict)
     """ 额外信息 """
-    to_me: bool = Field(default=False)
-    """ 是否为有关消息 """
+    tome: bool = Field(default=False)
+    """ 是否为机器人相关消息 """
+
     model_config = ConfigDict(extra="allow")
 
     @override

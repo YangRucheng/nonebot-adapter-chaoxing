@@ -220,7 +220,7 @@ class Adapter(BaseAdapter):
 
     def payload_to_event(self, payload: dict) -> Type[Event]:
         """将平台数据转换为 Event 对象"""
-        for cls in EVENT_CLASSES:
+        for cls in EVENT_CLASSES + [Event]:
             try:
                 if PYDANTIC_V2:
                     event = cls.model_validate(payload)
